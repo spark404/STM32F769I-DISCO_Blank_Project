@@ -25,6 +25,8 @@
 /* USER CODE BEGIN Includes */
 #include "stm32f769i_discovery.h"
 #include "stm32f769i_discovery_lcd.h"
+#include "stm32f769i_discovery_qspi.h"
+#include "image.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -240,7 +242,7 @@ int main(void)
   MX_HDMI_CEC_Init();
   MX_I2C1_Init();
   MX_I2C4_Init();
-  MX_IWDG_Init();
+  // MX_IWDG_Init();
   MX_LTDC_Init();
   MX_QUADSPI_Init();
   MX_RTC_Init();
@@ -260,29 +262,39 @@ int main(void)
   MX_USB_OTG_HS_PCD_Init();
   MX_DFSDM1_Init();
   /* USER CODE BEGIN 2 */
-  // Kick the watchdog until the task is running
-  HAL_IWDG_Refresh(&hiwdg);
 
+  // Enable access to the qspi flash chip in memory mapped mode
+  uint8_t bsp_status = 0;
+  bsp_status = BSP_QSPI_Init();
+  OnError_Handler(bsp_status != QSPI_OK);
+  bsp_status = BSP_QSPI_EnableMemoryMappedMode();
+  OnError_Handler(bsp_status != QSPI_OK);
+  HAL_NVIC_DisableIRQ(QUADSPI_IRQn);
+
+  // Enable the LCD
   uint8_t  lcd_status = LCD_OK;
   lcd_status = BSP_LCD_Init();
   OnError_Handler(lcd_status != LCD_OK);
 
-  BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
-  BSP_LCD_SelectLayer(0);
-
-  // Kick the watchdog until the task is running
-  HAL_IWDG_Refresh(&hiwdg);
-
-  /* Get the LCD Width and Height*/
+  // Get the LCD Width and Height
   LCD_X_Size = BSP_LCD_GetXSize();
   LCD_Y_Size = BSP_LCD_GetYSize();
 
-  BSP_LCD_Clear(LCD_COLOR_BLUE);
-  BSP_LCD_SetBackColor(LCD_COLOR_BLUE);
-  BSP_LCD_SetTextColor(LCD_COLOR_BLUE);
-  BSP_LCD_FillRect(0, 0, LCD_X_Size, 112);
+  // Configure the LCD layers with their framebuffers in SRAM
+  BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
+  BSP_LCD_LayerDefaultInit(1, LCD_FB_START_ADDRESS + (800*480*4));
+  BSP_LCD_SetColorKeying(1, LCD_COLOR_TRANSPARENT);
 
+  // Draw the image on layer 0
+  BSP_LCD_SelectLayer(0);
+  BSP_LCD_DrawBitmap(0, 0, webb_first_f769idisco);
+
+  // Draw text on layer one and use transparency to make the background image visible
+  BSP_LCD_SelectLayer(1);
+  BSP_LCD_Clear(LCD_COLOR_TRANSPARENT);
+  BSP_LCD_SetBackColor(LCD_COLOR_TRANSPARENT);
   BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+
   BSP_LCD_DisplayStringAt(0,LINE(2) , (uint8_t *)"Hello World", CENTER_MODE);
   BSP_LCD_SetFont(&Font16);
   BSP_LCD_DisplayStringAt(0,LINE(5), (uint8_t *)"Hello World example with DSI LCD", CENTER_MODE);
@@ -290,6 +302,8 @@ int main(void)
 
   BSP_LED_Init(LED2);
   BSP_LED_Toggle(LED2);
+
+  MX_IWDG_Init();
 
   /* USER CODE END 2 */
 

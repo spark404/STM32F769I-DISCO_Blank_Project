@@ -24,7 +24,9 @@ Versions used:
  * In 'Middleware' set FREERTOS/Advanced settings/USE_NEWLIB_REENTRANT to 'Enabled'
  
  If you can't be bothered to deal with watchdogs immediately you can deactivate 
- the IWDG as well in 'System Core'
+ the IWDG as well in 'System Core'. For now just comment out the line
+ 'MX_IWDG_Init();' to disable the watchdog for a bit, our bsp calls take too long.
+ Not that this will be enabled if you generate code from the ioc file again.
  
  After making these changes generate the code again 
  
@@ -62,6 +64,8 @@ Include the BSP
 /* USER CODE BEGIN Includes */
 #include "stm32f769i_discovery.h"
 #include "stm32f769i_discovery_lcd.h"
+#include "stm32f769i_discovery_qspi.h"
+#include "image.h"
 /* USER CODE END Includes */
 ```
 
@@ -120,30 +124,39 @@ Create a task to kick the watchdog
 Show stuff on the LCD and enable the green LED
 ```
   /* USER CODE BEGIN 2 */
+  
+  // Enable access to the qspi flash chip in memory mapped mode
+  uint8_t bsp_status = 0;
+  bsp_status = BSP_QSPI_Init();
+  OnError_Handler(bsp_status != QSPI_OK);
+  bsp_status = BSP_QSPI_EnableMemoryMappedMode();
+  OnError_Handler(bsp_status != QSPI_OK);
+  HAL_NVIC_DisableIRQ(QUADSPI_IRQn);
 
-  // Kick the watchdog until the task is running
-  HAL_IWDG_Refresh(&hiwdg);
-
+  // Enable the LCD
   uint8_t  lcd_status = LCD_OK;
   lcd_status = BSP_LCD_Init();
   OnError_Handler(lcd_status != LCD_OK);
 
-  BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
-  BSP_LCD_SelectLayer(0);
-
-  // Kick the watchdog until the task is running
-  HAL_IWDG_Refresh(&hiwdg);
-
-  /* Get the LCD Width and Height*/
+  // Get the LCD Width and Height
   LCD_X_Size = BSP_LCD_GetXSize();
   LCD_Y_Size = BSP_LCD_GetYSize();
 
-  BSP_LCD_Clear(LCD_COLOR_BLUE);
-  BSP_LCD_SetBackColor(LCD_COLOR_BLUE);
-  BSP_LCD_SetTextColor(LCD_COLOR_BLUE);
-  BSP_LCD_FillRect(0, 0, LCD_X_Size, 112);
+  // Configure the LCD layers with their framebuffers in SRAM
+  BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
+  BSP_LCD_LayerDefaultInit(1, LCD_FB_START_ADDRESS + (800*480*4));
+  BSP_LCD_SetColorKeying(1, LCD_COLOR_TRANSPARENT);
 
+  // Draw the image on layer 0
+  BSP_LCD_SelectLayer(0);
+  BSP_LCD_DrawBitmap(0, 0, webb_first_f769idisco);
+
+  // Draw text on layer one and use transparency to make the background image visible
+  BSP_LCD_SelectLayer(1);
+  BSP_LCD_Clear(LCD_COLOR_TRANSPARENT);
+  BSP_LCD_SetBackColor(LCD_COLOR_TRANSPARENT);
   BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+
   BSP_LCD_DisplayStringAt(0,LINE(2) , (uint8_t *)"Hello World", CENTER_MODE);
   BSP_LCD_SetFont(&Font16);
   BSP_LCD_DisplayStringAt(0,LINE(5), (uint8_t *)"Hello World example with DSI LCD", CENTER_MODE);
@@ -151,6 +164,8 @@ Show stuff on the LCD and enable the green LED
 
   BSP_LED_Init(LED2);
   BSP_LED_Toggle(LED2);
+
+  MX_IWDG_Init();
 
   /* USER CODE END 2 */
 ```
@@ -169,3 +184,34 @@ Enable the red led on HAL init error.
 ```
 
 Note: The program will fail if there is no SD card in the slot. Comment out the line with `MX_SDMMC2_SD_Init();` to avoid this.
+
+Using QSPI Memory for images
+---
+
+With the example above the image is loaded from the scarce flash. If you start
+adding more code that will become an issue. The board has SDRAM connected with 
+QSPI to offer additional space for static stuff like this. At the cost of
+a little performance as this access memory is slower.
+
+The correct attributes are set in image.h to make use of this memory, but changes
+to the .ld files is required as will to tell the linked where to put the data.
+
+Edit the files STM32F769NIHX_FLASH.ld and STM32F769NIHX_RAM.ld. In the MEMORY 
+defenition add
+
+```
+QSPI (rx)         : ORIGIN = 0x90000000, LENGTH = 64M
+```
+
+And near the bottom of the file before the closing bracket add
+
+```
+ExtFlashSection : { *(ExtFlashSection) } >QSPI
+```
+
+Note that you need to use the CubeProgrammer to specifically upload the part of the
+elf image that need to go into the QSPI memory. Enable the MX25L512G_STM32F769I-DISCO loader
+in the additional loaders section and configure the programmer to also load to
+address 0x90000000 by typing it in the Address field.
+
+ 
