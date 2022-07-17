@@ -165,6 +165,7 @@ void StartDefaultTask(void const * argument);
 static uint32_t LCD_X_Size = 0;
 static uint32_t LCD_Y_Size = 0;
 osThreadId watchdogTaskHandle;
+
 /**
   * @brief  On Error Handler on condition TRUE.
   * @param  condition : Can be TRUE or FALSE
@@ -178,6 +179,12 @@ static void OnError_Handler(uint32_t condition)
     while(1) { ; } /* Blocking on error */
   }
 }
+
+/**
+ * @brief  Task to periodically refresh the watchdog
+ * @param  pvParameters : Not used
+ * @retval None, endless loop
+ */
 
 void prvWatchdogTask( const void *pvParameters )
 {

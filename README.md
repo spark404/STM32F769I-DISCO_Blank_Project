@@ -26,19 +26,19 @@ Versions used:
  If you can't be bothered to deal with watchdogs immediately you can deactivate 
  the IWDG as well in 'System Core'. For now just comment out the line
  'MX_IWDG_Init();' to disable the watchdog for a bit, our bsp calls take too long.
- Not that this will be enabled if you generate code from the ioc file again.
+ Note this will be enabled again if you generate code from the ioc file.
  
- After making these changes generate the code again 
+ After making these changes generate the code. 
  
  Now you have a clean project, but it's missing the board specific stuff. The
- BSP files are in supporting repository, but not automagically copied to the project.
+ BSP files are in the supporting repository, but not automagically copied to the project.
  Locate your 'STM32Cube_FW_F7_V1.17.0' folder and copy the directory
 'Drivers/BSP/STM32F769I-Discovery' to your project in the same location. 
 From the 'Drivers/BSP/Components' directory copy the directories Common, adv7533,
  ft6x06, mx25l512, otm8009a and wm8994 to the same location in your project.
 From the 'Utilities' Folder copy Fonts to the same location in your project.
 
-The following directies should now show up in teh IDE after a refresh
+The following directies should now show up in the IDE after a refresh:
 ```
 ./Drivers/BSP/STM32F769I-Discovery
 ./Drivers/BSP/Components
@@ -51,7 +51,7 @@ The following directies should now show up in teh IDE after a refresh
 ./Utilities/Fonts
 ``` 
  
- Note: These locations will be cleaned when the ioc project is regenerated. Just copy them back at will.
+ Note: These locations will be removed when the ioc project is regenerated. Just copy them back at will.
  
  At this point you should be able to compile and run the project without errors. 
  It just doesn't do anything yet.
@@ -75,6 +75,7 @@ Supporting functions
 static uint32_t LCD_X_Size = 0;
 static uint32_t LCD_Y_Size = 0;
 osThreadId watchdogTaskHandle;
+
 /**
   * @brief  On Error Handler on condition TRUE.
   * @param  condition : Can be TRUE or FALSE
@@ -89,6 +90,11 @@ static void OnError_Handler(uint32_t condition)
   }
 }
 
+/**
+ * @brief  Task to periodically refresh the watchdog
+ * @param  pvParameters : Not used
+ * @retval None, endless loop
+ */
 void prvWatchdogTask( const void *pvParameters )
 {
     portTickType        xLastWakeTime;
@@ -112,7 +118,7 @@ void prvWatchdogTask( const void *pvParameters )
 /* USER CODE END 0 */
 ```
 
-Create a task to kick the watchdog
+Enable the task to refresh the watchdog
 ```
   /* USER CODE BEGIN RTOS_THREADS */
   osThreadDef(watchdogTask, prvWatchdogTask, osPriorityAboveNormal, 0, 1024);
@@ -121,7 +127,7 @@ Create a task to kick the watchdog
   /* USER CODE END RTOS_THREADS */
 ```
 
-Show stuff on the LCD and enable the green LED
+Show stuff on the LCD and enable the green LED when completed
 ```
   /* USER CODE BEGIN 2 */
   
@@ -170,7 +176,7 @@ Show stuff on the LCD and enable the green LED
   /* USER CODE END 2 */
 ```
 
-Enable the red led on HAL init error.
+Enable the red led on HAL error.
 ```
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
@@ -188,30 +194,31 @@ Note: The program will fail if there is no SD card in the slot. Comment out the 
 Using QSPI Memory for images
 ---
 
-With the example above the image is loaded from the scarce flash. If you start
+With the example code above the image is loaded from the scarce flash. If you start
 adding more code that will become an issue. The board has SDRAM connected with 
 QSPI to offer additional space for static stuff like this. At the cost of
-a little performance as this access memory is slower.
+a little performance as memory access is slower using QSPI.
 
-The correct attributes are set in image.h to make use of this memory, but changes
-to the .ld files is required as will to tell the linked where to put the data.
+The correct linker attributes are set in image.h to tell the linker to put the
+image in the SDRAM, but changes to the .ld files are required to tell the
+linker where to put the data.
 
 Edit the files STM32F769NIHX_FLASH.ld and STM32F769NIHX_RAM.ld. In the MEMORY 
-defenition add
+section add:
 
 ```
 QSPI (rx)         : ORIGIN = 0x90000000, LENGTH = 64M
 ```
 
-And near the bottom of the file before the closing bracket add
+And near the bottom of the file before the closing bracket add:
 
 ```
 ExtFlashSection : { *(ExtFlashSection) } >QSPI
 ```
 
 Note that you need to use the CubeProgrammer to specifically upload the part of the
-elf image that need to go into the QSPI memory. Enable the MX25L512G_STM32F769I-DISCO loader
-in the additional loaders section and configure the programmer to also load to
-address 0x90000000 by typing it in the Address field.
+elf image that needs to be place into the QSPI SDRAM memory. To do so enable the
+MX25L512G_STM32F769I-DISCO loader in the additional loaders section and configure
+the programmer to also load to address 0x90000000 by typing it in the Address field.
 
  
